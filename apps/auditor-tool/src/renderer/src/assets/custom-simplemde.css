@@ -1,0 +1,152 @@
+/* Custom SimpleMDE/EasyMDE Styles */
+
+/* Toolbar styling */
+.editor-toolbar {
+  background: #ffffff !important;
+  border-bottom: 1px solid #ddd !important;
+  padding: 10px !important;
+  opacity: 1 !important;
+}
+
+.editor-toolbar button {
+  color: #333 !important;
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-radius: 4px !important;
+  padding: 8px 12px !important;
+  margin: 2px !important;
+  cursor: pointer !important;
+  min-width: 40px !important;
+  min-height: 36px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.editor-toolbar button:hover {
+  background: #f0f0f0 !important;
+  border-color: #ccc !important;
+}
+
+.editor-toolbar button.active {
+  background: #e0e0e0 !important;
+  border-color: #bbb !important;
+}
+
+/* Icon Replacements - Use Text/Emoji primarily */
+
+/* Bold */
+.editor-toolbar .fa-bold::before {
+  content: 'B' !important;
+  font-family: sans-serif !important;
+  font-weight: bold !important;
+  font-size: 16px !important;
+}
+
+/* Italic */
+.editor-toolbar .fa-italic::before {
+  content: 'I' !important;
+  font-family: serif !important;
+  font-style: italic !important;
+  font-size: 16px !important;
+}
+
+/* Heading */
+.editor-toolbar .fa-heading::before,
+.editor-toolbar .fa-header::before {
+  content: 'H' !important;
+  font-family: sans-serif !important;
+  font-weight: bold !important;
+  font-size: 16px !important;
+}
+
+/* Lists */
+.editor-toolbar .fa-list-ul::before {
+  content: '●' !important;
+  font-size: 18px !important;
+}
+
+.editor-toolbar .fa-list-ol::before {
+  content: '1.' !important;
+  font-size: 14px !important;
+  font-weight: bold !important;
+}
+
+/* Link */
+.editor-toolbar .fa-link::before {
+  content: '🔗' !important;
+  font-size: 18px !important;
+}
+
+/* Image */
+.editor-toolbar .fa-image::before {
+  content: '🖼️' !important;
+  font-size: 18px !important;
+}
+
+/* Preview */
+.editor-toolbar .fa-eye::before {
+  content: '👁' !important;
+  font-size: 18px !important;
+}
+
+/* Side by Side */
+.editor-toolbar .fa-columns::before {
+  content: '⇆' !important;
+  font-size: 18px !important;
+}
+
+/* Fullscreen */
+.editor-toolbar .fa-arrows-alt::before {
+  content: '⛶' !important;
+  font-size: 18px !important;
+}
+
+/* Guide/Help */
+.editor-toolbar .fa-question-circle::before {
+  content: '?' !important;
+  font-weight: bold !important;
+  font-size: 16px !important;
+}
+
+/* Hide original Font Awesome icons if they load partially */
+.editor-toolbar i.fa,
+.editor-toolbar i.fas,
+.editor-toolbar i.far,
+.editor-toolbar i.fab {
+  font-family: inherit !important; /* Allow text content to show */
+  font-style: normal !important;
+}
+
+/* Separator styling */
+.editor-toolbar i.separator {
+  border-left: 1px solid #ddd !important;
+  border-right: 1px solid #fff !important;
+  margin: 0 8px !important;
+  width: 0 !important;
+  color: transparent !important;
+}
+
+/* Editor Container - robust sizing */
+.CodeMirror {
+  border: 1px solid #ddd !important;
+  min-height: 350px !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  font-family: monospace !important;
+}
+
+.CodeMirror-scroll {
+  min-height: 350px !important;
+}
+
+/* Ensure editor is fully interactive */
+.CodeMirror,
+.CodeMirror-scroll,
+.CodeMirror-sizer,
+.CodeMirror-lines,
+.CodeMirror-code,
+.CodeMirror-cursors,
+.CodeMirror textarea {
+  pointer-events: auto !important;
+}

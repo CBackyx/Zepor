@@ -1,0 +1,4 @@
+fn(Json<ProofRequest>) -> impl Future<Output = Json<ProofResponse>> {generate_proof}
+fn(Json<ProofRequest>) -> impl Future<Output = Json<ProofResponse>> {generate_proof}: Handler<_, _>
+Layered<L, H, T, S>
+MethodRouter<S>
