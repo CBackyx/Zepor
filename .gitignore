@@ -32,3 +32,4 @@ pnpm-debug.log*
 .idea
 *.swp
 *.swo
+target/
