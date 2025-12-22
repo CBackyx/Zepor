@@ -33,3 +33,6 @@ pnpm-debug.log*
 *.swp
 *.swo
 target/
+
+# Archives
+*.tar.gz
