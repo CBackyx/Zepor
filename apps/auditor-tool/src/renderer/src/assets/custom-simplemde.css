@@ -2,14 +2,16 @@
 
 /* Toolbar styling */
 .editor-toolbar {
-  background: #ffffff !important;
-  border-bottom: 1px solid #ddd !important;
+  background: var(--ev-c-black-soft) !important;
+  border-bottom: 1px solid var(--ev-c-black-mute) !important;
   padding: 10px !important;
   opacity: 1 !important;
+  border-radius: 8px 8px 0 0 !important;
+  border: 1px solid var(--ev-c-black-mute) !important;
 }
 
 .editor-toolbar button {
-  color: #333 !important;
+  color: var(--ev-c-text-1) !important;
   background: transparent !important;
   border: 1px solid transparent !important;
   border-radius: 4px !important;
@@ -24,13 +26,13 @@
 }
 
 .editor-toolbar button:hover {
-  background: #f0f0f0 !important;
-  border-color: #ccc !important;
+  background: var(--ev-c-gray-3) !important;
+  border-color: var(--ev-c-gray-2) !important;
 }
 
 .editor-toolbar button.active {
-  background: #e0e0e0 !important;
-  border-color: #bbb !important;
+  background: var(--ev-c-gray-3) !important;
+  border-color: var(--ev-c-accent) !important;
 }
 
 /* Icon Replacements - Use Text/Emoji primarily */
@@ -106,7 +108,6 @@
 .editor-toolbar .fa-question-circle::before {
   content: '?' !important;
   font-weight: bold !important;
-  font-size: 16px !important;
 }
 
 /* Hide original Font Awesome icons if they load partially */
@@ -114,30 +115,60 @@
 .editor-toolbar i.fas,
 .editor-toolbar i.far,
 .editor-toolbar i.fab {
-  font-family: inherit !important; /* Allow text content to show */
+  font-family: inherit !important;
+  /* Allow text content to show */
   font-style: normal !important;
 }
 
 /* Separator styling */
 .editor-toolbar i.separator {
-  border-left: 1px solid #ddd !important;
-  border-right: 1px solid #fff !important;
+  border-left: 1px solid var(--ev-c-gray-3) !important;
+  border-right: 1px solid var(--ev-c-gray-3) !important;
   margin: 0 8px !important;
   width: 0 !important;
-  color: transparent !important;
 }
 
-/* Editor Container - robust sizing */
+/* Editor Container */
 .CodeMirror {
-  border: 1px solid #ddd !important;
+  background-color: var(--ev-c-black) !important;
+  border: 1px solid var(--ev-c-black-mute) !important;
+  border-top: none !important;
+  border-radius: 0 0 8px 8px !important;
   min-height: 350px !important;
+  color: var(--ev-c-text-1) !important;
   font-size: 14px !important;
   line-height: 1.6 !important;
-  font-family: monospace !important;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Roboto Mono', monospace !important;
+}
+
+.CodeMirror-cursor {
+  border-left: 1px solid var(--ev-c-text-1) !important;
 }
 
 .CodeMirror-scroll {
   min-height: 350px !important;
+}
+
+/* Markdown Syntax Highlighting Adjustments for Dark Mode */
+.cm-header {
+  color: var(--ev-c-accent) !important;
+  font-weight: bold;
+}
+
+.cm-strong {
+  color: white !important;
+}
+
+.cm-em {
+  color: var(--ev-c-text-2) !important;
+}
+
+.cm-link {
+  color: var(--ev-c-accent) !important;
+}
+
+.cm-url {
+  color: var(--ev-c-gray-1) !important;
 }
 
 /* Ensure editor is fully interactive */

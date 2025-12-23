@@ -189,8 +189,9 @@ function App() {
     return (
       <div style={{
         height: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        overflow: 'auto'
+        width: '100%',
+        overflow: 'auto',
+        background: 'var(--color-background)'
       }}>
         <StartScreen onOptionSelect={handleStartOption} />
         <input
@@ -215,18 +216,19 @@ function App() {
     return (
       <div style={{
         height: '100vh',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+        width: '100%',
+        background: 'var(--color-background)',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        color: 'white'
+        color: 'var(--ev-c-text-1)'
       }}>
         <div style={{ textAlign: 'center' }}>
           <h2 style={{ marginBottom: '20px' }}>Extracting Text from PDF...</h2>
           <div style={{
             width: '300px',
             height: '10px',
-            background: 'rgba(255,255,255,0.2)',
+            background: 'var(--ev-c-black-mute)',
             borderRadius: '5px',
             margin: '0 auto 20px',
             overflow: 'hidden'
@@ -234,7 +236,7 @@ function App() {
             <div style={{
               width: `${(ocrProgress?.value || 0) * 100}%`,
               height: '100%',
-              background: '#4fd1c5',
+              background: 'var(--ev-c-accent)',
               transition: 'width 0.3s'
             }} />
           </div>
@@ -248,57 +250,48 @@ function App() {
   return (
     <div style={{
       height: '100vh',
+      width: '100%',
       overflow: 'auto',
-      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'
+      background: 'var(--color-background)'
     }}>
-      <div style={{
-        padding: '40px',
-        maxWidth: '1100px',
-        margin: '0 auto',
-        backgroundColor: 'white',
-        minHeight: 'calc(100vh - 80px)',
-        boxShadow: '0 10px 40px rgba(0,0,0,0.2)',
-        borderRadius: '12px',
-        marginTop: '40px',
-        marginBottom: '40px',
-        position: 'relative'
-      }}>
-        <button
-          onClick={handleGoBack}
-          style={{
-            position: 'absolute',
-            top: '20px',
-            left: '20px',
-            background: 'transparent',
-            border: 'none',
-            color: '#666',
-            cursor: 'pointer',
-            fontSize: '16px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px'
-          }}
-        >
-          <i className="fas fa-arrow-left"></i> Back to Start
-        </button>
+      <div className="main-container">
+
+        <div className="page-header">
+          <button
+            onClick={handleGoBack}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--ev-c-text-2)',
+              cursor: 'pointer',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontWeight: 600
+            }}
+          >
+            <i className="fas fa-arrow-left"></i> Back to Start
+          </button>
+        </div>
 
         <div style={{
           textAlign: 'center',
           marginBottom: '40px',
           paddingBottom: '20px',
-          borderBottom: '2px solid #f0f0f0',
-          marginTop: '20px'
+          borderBottom: '1px solid var(--ev-c-black-mute)',
+          marginTop: '10px'
         }}>
           <h1 style={{
-            color: '#667eea',
+            color: 'var(--ev-c-text-1)',
             marginBottom: '10px',
-            fontSize: '32px',
+            fontSize: '28px',
             fontWeight: '700'
           }}>
             Zepor Auditor Tool
           </h1>
           <p style={{
-            color: '#666',
+            color: 'var(--ev-c-text-2)',
             fontSize: '16px'
           }}>
             Create and sign professional Proof of Reserve documents
@@ -308,7 +301,7 @@ function App() {
         <div style={{ marginBottom: '30px' }}>
           <h3 style={{
             marginBottom: '15px',
-            color: '#333',
+            color: 'var(--ev-c-text-1)',
             fontSize: '18px',
             fontWeight: '600'
           }}>
@@ -331,7 +324,7 @@ function App() {
         <div style={{ marginBottom: '30px' }}>
           <h3 style={{
             marginBottom: '20px',
-            color: '#333',
+            color: 'var(--ev-c-text-1)',
             fontSize: '18px',
             fontWeight: '600'
           }}>
@@ -345,56 +338,26 @@ function App() {
             marginBottom: '20px'
           }}>
             <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontWeight: '600',
-                fontSize: '14px',
-                color: '#555'
-              }}>
+              <label className="label-text">
                 Signer ID
               </label>
               <input
                 type="text"
                 value={config.signerId}
                 onChange={(e) => setConfig({ ...config, signerId: e.target.value })}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                  transition: 'border-color 0.2s'
-                }}
-                onFocus={(e) => e.target.style.borderColor = '#667eea'}
-                onBlur={(e) => e.target.style.borderColor = '#e0e0e0'}
+                className="input-field"
               />
             </div>
 
             <div>
-              <label style={{
-                display: 'block',
-                marginBottom: '8px',
-                fontWeight: '600',
-                fontSize: '14px',
-                color: '#555'
-              }}>
+              <label className="label-text">
                 Signing Algorithm
               </label>
               <select
                 value={config.algorithm}
                 onChange={(e) => setConfig({ ...config, algorithm: e.target.value as any })}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '1px solid #e0e0e0',
-                  borderRadius: '6px',
-                  fontSize: '14px',
-                  boxSizing: 'border-box',
-                  backgroundColor: 'white',
-                  cursor: 'pointer'
-                }}
+                className="select-field"
+                style={{ cursor: 'pointer' }}
               >
                 <option value="RSA-SHA256">RSA-SHA256</option>
                 <option value="ECDSA-P256">ECDSA-P256</option>
@@ -403,38 +366,20 @@ function App() {
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontWeight: '600',
-              fontSize: '14px',
-              color: '#555'
-            }}>
+            <label className="label-text">
               Private Key
             </label>
             <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
               <button
                 onClick={handleImportKey}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#667eea',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  transition: 'background-color 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5568d3'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#667eea'}
+                className="btn btn-outline"
               >
-                📁 Import from File
+                <i className="fas fa-folder-open"></i> Import from File
               </button>
               {config.keyFilePath && (
                 <span style={{
                   padding: '10px',
-                  color: '#28a745',
+                  color: 'var(--ev-c-success)',
                   fontSize: '14px',
                   display: 'flex',
                   alignItems: 'center'
@@ -447,15 +392,11 @@ function App() {
               value={config.privateKey}
               onChange={(e) => setConfig({ ...config, privateKey: e.target.value })}
               placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----&#10;&#10;Or click 'Import from File' above"
+              className="textarea-field"
               style={{
-                width: '100%',
-                padding: '12px',
                 minHeight: '120px',
-                border: '1px solid #e0e0e0',
-                borderRadius: '6px',
                 fontFamily: 'Monaco, Consolas, monospace',
                 fontSize: '12px',
-                boxSizing: 'border-box',
                 resize: 'vertical',
                 lineHeight: '1.5'
               }}
@@ -471,41 +412,23 @@ function App() {
           </div>
 
           <div style={{ marginBottom: '20px' }}>
-            <label style={{
-              display: 'block',
-              marginBottom: '8px',
-              fontWeight: '600',
-              fontSize: '14px',
-              color: '#555'
-            }}>
+            <label className="label-text">
               Save Location
             </label>
             <button
               onClick={handleChooseSaveLocation}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'background-color 0.2s'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#5a6268'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#6c757d'}
+              className="btn btn-outline"
             >
-              📂 Choose Save Location
+              <i className="fas fa-folder"></i> Choose Save Location
             </button>
             {config.saveLocation && (
               <p style={{
                 marginTop: '10px',
                 padding: '10px',
-                backgroundColor: '#f8f9fa',
+                backgroundColor: 'var(--ev-c-black-mute)',
                 borderRadius: '6px',
                 fontSize: '13px',
-                color: '#666',
+                color: 'var(--ev-c-text-2)',
                 wordBreak: 'break-all'
               }}>
                 Will save to: <strong>{config.saveLocation}</strong>
@@ -517,25 +440,14 @@ function App() {
         <button
           onClick={handleGenerate}
           disabled={isProcessing}
+          className="btn btn-primary"
           style={{
             width: '100%',
             padding: '18px',
-            backgroundColor: isProcessing ? '#cccccc' : '#28a745',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: isProcessing ? 'not-allowed' : 'pointer',
             fontSize: '16px',
             fontWeight: '700',
             marginBottom: '20px',
-            transition: 'all 0.2s',
-            boxShadow: isProcessing ? 'none' : '0 4px 12px rgba(40, 167, 69, 0.3)'
-          }}
-          onMouseEnter={(e) => {
-            if (!isProcessing) e.currentTarget.style.backgroundColor = '#218838'
-          }}
-          onMouseLeave={(e) => {
-            if (!isProcessing) e.currentTarget.style.backgroundColor = '#28a745'
+            boxShadow: isProcessing ? 'none' : '0 4px 12px rgba(102, 126, 234, 0.3)'
           }}
         >
           {isProcessing ? '⏳ Processing...' : '🔐 Generate & Sign PDF'}
@@ -545,12 +457,15 @@ function App() {
           <div style={{
             padding: '16px',
             backgroundColor: status.includes('Success') || status.includes('imported') || status.includes('location')
-              ? '#d4edda' : '#f8d7da',
+              ? 'rgba(16, 185, 129, 0.1)' // Success (Green)
+              : 'rgba(239, 68, 68, 0.1)', // Error (Red)
             color: status.includes('Success') || status.includes('imported') || status.includes('location')
-              ? '#155724' : '#721c24',
+              ? '#34d399'
+              : '#f87171',
             borderRadius: '8px',
             border: `1px solid ${status.includes('Success') || status.includes('imported') || status.includes('location')
-              ? '#c3e6cb' : '#f5c6cb'}`,
+              ? 'rgba(16, 185, 129, 0.2)'
+              : 'rgba(239, 68, 68, 0.2)'}`,
             fontSize: '14px',
             lineHeight: '1.5'
           }}>
@@ -574,8 +489,8 @@ function App() {
               )}
             </div>
             {showErrorDetails && ocrErrorDetails && (
-              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(0,0,0,0.1)' }}>
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '12px', fontFamily: 'monospace' }}>
+              <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: '12px', fontFamily: 'monospace', color: 'var(--ev-c-text-2)' }}>
                   {ocrErrorDetails}
                 </pre>
               </div>
