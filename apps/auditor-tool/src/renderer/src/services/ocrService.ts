@@ -2,9 +2,6 @@ import { createWorker } from 'tesseract.js';
 import * as pdfjsLib from 'pdfjs-dist';
 
 // Set worker source for pdf.js
-// In a Vite environment, we often need to point to the worker file explicitly.
-// We'll trust pdfjs-dist's webpack/vite compatibility or user might need to adjust vite config.
-// For now, we try to use the build included in the package.
 // @ts-ignore
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min?url';
 
@@ -27,12 +24,10 @@ export async function extractTextFromPdf(
         let fullText = '';
 
         // Initialize Tesseract worker
-        // Initialize Tesseract worker
-        onProgress(0, 'Initializing Tesseract (downloading language data if needed)...');
+        onProgress(0, 'Initializing Tesseract...');
 
         let worker;
         try {
-            // v5: createWorker(langs, oem, options)
             // Support English, Simplified Chinese, and Traditional Chinese
             worker = await createWorker('eng+chi_sim+chi_tra');
         } catch (e) {
@@ -44,9 +39,10 @@ export async function extractTextFromPdf(
             onProgress(i / numPages, `Processing page ${i} of ${numPages}...`);
 
             const page = await pdf.getPage(i);
-            const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better OCR
+            // Lower scale slightly for speed if needed, but 2.0 is good for accuracy.
+            // Let's keep 2.0 as requested for quality "support".
+            const viewport = page.getViewport({ scale: 2.0 });
 
-            // Create an offscreen canvas
             const canvas = document.createElement('canvas');
             const context = canvas.getContext('2d');
             canvas.height = viewport.height;
@@ -59,55 +55,78 @@ export async function extractTextFromPdf(
                 viewport: viewport
             } as any).promise;
 
-            // Convert canvas to image data url or blob for Tesseract
             const dataUrl = canvas.toDataURL('image/png');
-
             const ret = await worker.recognize(dataUrl);
 
-            // Basic Table Detection Heuristic
-            const lines = (ret.data as any).lines;
+            // Access words to handle spacing manually
+            const words = (ret.data as any).words;
             let pageText = '';
 
-            if (lines && lines.length > 0) {
-                // Process each line to check for column gaps
-                // Scale 2.0 constants
-                const COLUMN_GAP_THRESHOLD = 40;
-                const WORD_SPACE_THRESHOLD = 10;
+            if (words && words.length > 0) {
+                // Heuristic for spacing:
+                // If Prev is CJK or Next is CJK -> No Space
+                // If Prev is English/Num AND Next is English/Num -> Space
 
-                for (const line of lines) {
-                    const words = line.words;
-                    if (!words || words.length === 0) continue;
+                for (let j = 0; j < words.length; j++) {
+                    const word = words[j];
+                    const text = word.text;
 
-                    let lineStr = words[0].text;
-                    let hasColumnGap = false;
-
-                    for (let j = 1; j < words.length; j++) {
-                        const prev = words[j - 1];
-                        const curr = words[j];
-
-                        const gap = curr.bbox.x0 - prev.bbox.x1;
-
-                        if (gap > COLUMN_GAP_THRESHOLD) {
-                            // Table Column
-                            lineStr += ' | ' + curr.text;
-                            hasColumnGap = true;
-                        } else if (gap > WORD_SPACE_THRESHOLD) {
-                            // Normal Space (English words)
-                            lineStr += ' ' + curr.text;
-                        } else {
-                            // No Space (CJK characters or joined text)
-                            lineStr += curr.text;
-                        }
+                    if (j === 0) {
+                        pageText += text;
+                        continue;
                     }
 
-                    if (hasColumnGap) {
-                        pageText += `| ${lineStr} |\n`;
-                    } else {
-                        pageText += `${lineStr}\n`;
-                    }
+                    const prevWord = words[j - 1];
+                    const prevText = prevWord.text;
+
+                    // Simple CJK check (Ranges for common CJK)
+                    // This is a naive check but covers most common cases
+                    const isCJK = (str: string) => /[\u4e00-\u9fa5]/.test(str);
+
+                    const prevIsCJK = isCJK(prevText);
+                    const currIsCJK = isCJK(text);
+
+                    // Check for new line based on bbox or Tesseract's line info? 
+                    // Tesseract "words" array flattens everything usually, or we can use "lines".
+                    // Using "lines" is safer for layout preservation.
                 }
+
+                // Let's switch to using 'lines' for structure, then process words within line
+                const lines = (ret.data as any).lines;
+                if (lines && lines.length > 0) {
+                    pageText = lines.map(line => {
+                        const lineWords = line.words;
+                        if (!lineWords || lineWords.length === 0) return '';
+
+                        let lineStr = lineWords[0].text;
+
+                        for (let k = 1; k < lineWords.length; k++) {
+                            const prev = lineWords[k - 1];
+                            const curr = lineWords[k];
+
+                            const isCJK = (str: string) => /[\u4e00-\u9fa5]/.test(str);
+                            // Simple regex for CJK
+                            const prevChar = prev.text.slice(-1); // Last char of prev
+                            const currChar = curr.text.charAt(0); // First char of curr
+
+                            const prevIsCJK = isCJK(prevChar);
+                            const currIsCJK = isCJK(currChar);
+
+                            if (prevIsCJK || currIsCJK) {
+                                // No space between CJK characters
+                                lineStr += curr.text;
+                            } else {
+                                // Space between non-CJK (English/Numbers)
+                                lineStr += ' ' + curr.text;
+                            }
+                        }
+                        return lineStr;
+                    }).join('\n');
+                } else {
+                    pageText = ret.data.text;
+                }
+
             } else {
-                // Fallback if no line data
                 pageText = ret.data.text;
             }
 

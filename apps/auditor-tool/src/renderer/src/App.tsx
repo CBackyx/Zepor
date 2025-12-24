@@ -1,9 +1,11 @@
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import SimpleMDE from 'react-simplemde-editor'
 import 'easymde/dist/easymde.min.css'
-import '@fortawesome/fontawesome-free/css/all.min.css'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { faArrowLeft, faTrashAlt, faFolder } from '@fortawesome/free-solid-svg-icons'
 import './assets/custom-simplemde.css'
 import StartScreen from './components/StartScreen'
+import IdentityScreen from './components/IdentityScreen'
 import { extractTextFromPdf } from './services/ocrService'
 
 const DEFAULT_TEMPLATE = `# Zepor Proof of Reserve Audit Report
@@ -32,10 +34,20 @@ interface SigningConfig {
   saveLocation?: string
 }
 
-type AppStage = 'START' | 'OCR' | 'EDITOR'
+interface IdentityConfig {
+  algorithm: 'RSA-SHA256' | 'ECDSA-P256';
+  privateKey: string;
+  keyFilePath?: string;
+  isGenerated: boolean;
+}
+
+type AppStage = 'IDENTITY' | 'START' | 'OCR' | 'EDITOR'
 
 function App() {
-  const [stage, setStage] = useState<AppStage>('START')
+  // Navigation State
+  const [stage, setStage] = useState<AppStage>('IDENTITY')
+
+  // Data State (Cached)
   const [markdown, setMarkdown] = useState<string>(DEFAULT_TEMPLATE)
   const [config, setConfig] = useState<SigningConfig>({
     signerId: 'AUDITOR-001',
@@ -44,37 +56,191 @@ function App() {
     keyFilePath: '',
     saveLocation: ''
   })
+  const [identityConfig, setIdentityConfig] = useState<IdentityConfig | null>(null)
+
+  // UI State
   const [status, setStatus] = useState<string>('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [ocrProgress, setOcrProgress] = useState<{ value: number; message: string } | null>(null)
   const [ocrErrorDetails, setOcrErrorDetails] = useState<string | null>(null)
   const [showErrorDetails, setShowErrorDetails] = useState(false)
 
+  // Remote OCR Config State
+  const [showRemoteConfig, setShowRemoteConfig] = useState(false)
+  const [remoteUrl, setRemoteUrl] = useState('')
+
   // Hidden file inputs
   const mdFileInputRef = useRef<HTMLInputElement>(null)
   const pdfFileInputRef = useRef<HTMLInputElement>(null)
+  const pdfRemoteFileInputRef = useRef<HTMLInputElement>(null)
+
+  // Load saved identity on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('auditor_identity');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.privateKey) {
+          setIdentityConfig(parsed);
+          // Pre-fill config
+          setConfig(prev => ({
+            ...prev,
+            algorithm: parsed.algorithm,
+            privateKey: parsed.privateKey,
+            keyFilePath: parsed.keyFilePath
+          }));
+        }
+      } catch (e) {
+        console.error('Failed to load saved identity', e);
+      }
+    }
+  }, []);
 
   // Stable options object
   const mdeOptions = useMemo(() => {
+    // Reuse a lightweight LaTeX text-command replacer so editor preview matches PDF output
+    const replaceLatexTextCommands = (input: string) => {
+      let out = input;
+      out = out.replace(/\\textregistered/g, '®');
+      out = out.replace(/\\texttrademark/g, '™');
+      out = out.replace(/\\textdegree/g, '°');
+      out = out.replace(/\\degree/g, '°');
+      out = out.replace(/\\textcircled\{(\d{1,2})\}/g, (_, numStr) => {
+        const n = parseInt(numStr, 10);
+        if (n >= 1 && n <= 20) return String.fromCodePoint(0x245F + n);
+        return `(${n})`;
+      });
+      out = out.replace(/\\textcircled\{([A-Za-z])\}/g, (_, ch) => {
+        const code = ch.charCodeAt(0);
+        if (code >= 65 && code <= 90) return String.fromCodePoint(0x24B6 + (code - 65));
+        if (code >= 97 && code <= 122) return String.fromCodePoint(0x24D0 + (code - 97));
+        return ch;
+      });
+      // handle inline-math wrapped forms
+      out = out.replace(/\$+\s*\\textcircled\{(\d{1,2})\}\s*\$+/g, (_, numStr) => {
+        const n = parseInt(numStr, 10);
+        if (n >= 1 && n <= 20) return String.fromCodePoint(0x245F + n);
+        return `(${n})`;
+      });
+      out = out.replace(/\$+\s*\\textregistered\s*\$+/g, '®');
+      out = out.replace(/\$+\s*\\texttrademark\s*\$+/g, '™');
+      return out;
+    };
+
     return {
       spellChecker: false,
       minHeight: '350px',
       status: false,
       autofocus: false,
+      previewRender: (plainText) => {
+        // Pre-process latex-like text commands so preview matches PDF renderer
+        const processed = replaceLatexTextCommands(plainText);
+        // Basic Markdown render
+        const preview = SimpleMDE.prototype.markdown(processed);
+        // We will perform a post-render on the preview URL in a real DOM, 
+        // but SimpleMDE expects a string return. 
+        // For simple math support without complex parsing, we can check if window.renderMathInElement exists.
+
+        setTimeout(() => {
+              try {
+                // @ts-ignore
+                if (window.renderMathInElement) {
+                  const previewEl = document.getElementsByClassName('editor-preview')[0];
+                  if (previewEl) {
+                    // @ts-ignore
+                    window.renderMathInElement(previewEl, {
+                      delimiters: [
+                        { left: '$$', right: '$$', display: true },
+                        { left: '$', right: '$', display: false },
+                        { left: '\\(', right: '\\)', display: false },
+                        { left: '\\[', right: '\\]', display: true }
+                      ]
+                    });
+                  }
+                }
+              } catch (e) {
+                // If math rendering fails, attempt a safe fallback: directly set innerHTML of preview
+                try {
+                  const previewEl = document.getElementsByClassName('editor-preview')[0];
+                  if (previewEl && typeof preview === 'string') {
+                    // @ts-ignore
+                    previewEl.innerHTML = preview;
+                  }
+                } catch (err) {
+                  console.error('Fallback preview render failed', err);
+                }
+                console.error('Math render error', e);
+              }
+        }, 0);
+
+        return preview;
+      }
     }
   }, [])
 
   // --- Actions ---
+  const [showPdfPreview, setShowPdfPreview] = useState(false)
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null)
 
-  const handleStartOption = (option: 'create' | 'import-md' | 'import-pdf') => {
+  const handleTogglePdfPreview = async () => {
+    if (showPdfPreview) {
+      setShowPdfPreview(false)
+      if (pdfPreviewUrl) {
+        URL.revokeObjectURL(pdfPreviewUrl)
+        setPdfPreviewUrl(null)
+      }
+      return
+    }
+
+    try {
+      setStatus('Generating preview PDF...')
+      // @ts-ignore
+      const base64: string = await window.api.generatePreviewPdf({ markdown })
+      // Convert base64 to Uint8Array without relying on Node Buffer in renderer
+      const binary = atob(base64)
+      const len = binary.length
+      const bytes = new Uint8Array(len)
+      for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i)
+      const blob = new Blob([bytes], { type: 'application/pdf' })
+      const url = URL.createObjectURL(blob)
+      setPdfPreviewUrl(url)
+      setShowPdfPreview(true)
+      setStatus('')
+    } catch (e) {
+      console.error('Preview generation failed', e)
+      setStatus('Preview generation failed')
+    }
+  }
+
+  const handleIdentityComplete = (idConfig: IdentityConfig) => {
+    setIdentityConfig(idConfig);
+    setConfig(prev => ({
+      ...prev,
+      algorithm: idConfig.algorithm,
+      privateKey: idConfig.privateKey,
+      keyFilePath: idConfig.keyFilePath
+    }));
+    // Save to local storage
+    localStorage.setItem('auditor_identity', JSON.stringify(idConfig));
+    setStage('START');
+  };
+
+  const handleStartOption = (option: 'create' | 'import-md' | 'import-pdf-local' | 'import-pdf-remote') => {
     if (option === 'create') {
-      setMarkdown(DEFAULT_TEMPLATE)
       setStage('EDITOR')
     } else if (option === 'import-md') {
       mdFileInputRef.current?.click()
-    } else if (option === 'import-pdf') {
+    } else if (option === 'import-pdf-local') {
       pdfFileInputRef.current?.click()
+    } else if (option === 'import-pdf-remote') {
+      // Show config modal first
+      setShowRemoteConfig(true)
     }
+  }
+
+  const handleRemoteConfigSubmit = () => {
+    setShowRemoteConfig(false)
+    pdfRemoteFileInputRef.current?.click()
   }
 
   const handleMdFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -88,13 +254,15 @@ function App() {
       setStage('EDITOR')
     }
     reader.readAsText(file)
-    // Reset value to allow re-selecting same file
     e.target.value = ''
   }
 
   const handlePdfFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+
+    // TODO: Remote OCR Check integrated here later.
+    // Defaulting to Local OCR for this step of the plan.
 
     setStage('OCR')
     setIsProcessing(true)
@@ -111,7 +279,41 @@ function App() {
       const err = error as Error;
       setStatus(`OCR Failed: ${err.message || 'Unknown error'}`)
       setOcrErrorDetails(err.stack || JSON.stringify(err, null, 2))
-      setMarkdown(DEFAULT_TEMPLATE) // Fallback
+      // setMarkdown(DEFAULT_TEMPLATE) // Don't wipe if we want to show error on previous screen?
+      // Actually fail back to Editor so they can see error and maybe try again or manual entry
+      setStage('EDITOR')
+    } finally {
+      setIsProcessing(false)
+      setOcrProgress(null)
+      e.target.value = ''
+    }
+  }
+
+  const handlePdfRemoteFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    setStage('OCR')
+    setIsProcessing(true)
+    setOcrProgress({ value: 0, message: 'Uploading to Remote OCR...' })
+
+    try {
+      const { uploadPdfToRemote } = await import('./services/remoteOcrService');
+      // Pass the configured URL if set, otherwise undefined (to use default)
+      const urlToUse = remoteUrl.trim() || undefined;
+
+      const text = await uploadPdfToRemote(file, urlToUse, (message) => {
+        // Fake progress for indeterminate state or use message
+        setOcrProgress({ value: 0.5, message });
+      });
+
+      setMarkdown(text || DEFAULT_TEMPLATE)
+      setStage('EDITOR')
+    } catch (error) {
+      console.error(error)
+      const err = error as Error;
+      setStatus(`Remote OCR Failed: ${err.message || 'Unknown error'}`)
+      setOcrErrorDetails(err.stack || JSON.stringify(err, null, 2))
       setStage('EDITOR')
     } finally {
       setIsProcessing(false)
@@ -121,29 +323,22 @@ function App() {
   }
 
   const handleGoBack = () => {
-    if (confirm('Are you sure? Unsaved changes will be lost.')) {
-      setStage('START')
-      setStatus('')
+    // Graceful back logic
+    if (stage === 'EDITOR') {
+      setStage('START');
+    } else if (stage === 'START') {
+      setStage('IDENTITY');
+    }
+    setStatus('');
+  }
+
+  const handleClearContent = () => {
+    if (confirm('Are you sure you want to clear the editor content?')) {
+      setMarkdown(DEFAULT_TEMPLATE);
     }
   }
 
-  const handleImportKey = async () => {
-    try {
-      // @ts-ignore
-      const result = await window.api.selectKeyFile()
-      if (result.filePath && result.content) {
-        setConfig({
-          ...config,
-          keyFilePath: result.filePath,
-          privateKey: result.content
-        })
-        setStatus(`Key imported from: ${result.filePath}`)
-      }
-    } catch (error) {
-      console.error(error)
-      setStatus('Failed to import key file')
-    }
-  }
+
 
   const handleChooseSaveLocation = async () => {
     try {
@@ -177,7 +372,8 @@ function App() {
       setStatus(`Success! PDF saved to: ${result.filePath}`)
     } catch (error) {
       console.error(error)
-      setStatus('Error generating PDF. Check console.')
+      const err = error as Error;
+      setStatus(`Error generating PDF: ${err.message}`)
     } finally {
       setIsProcessing(false)
     }
@@ -185,15 +381,106 @@ function App() {
 
   // --- Renderers ---
 
+  if (stage === 'IDENTITY') {
+    return (
+      <IdentityScreen
+        onComplete={handleIdentityComplete}
+        initialConfig={identityConfig}
+      />
+    );
+  }
+
   if (stage === 'START') {
     return (
       <div style={{
         height: '100vh',
         width: '100%',
         overflow: 'auto',
-        background: 'var(--color-background)'
+        background: 'var(--color-background)',
+        position: 'relative'
       }}>
-        <StartScreen onOptionSelect={handleStartOption} />
+
+        <button
+          onClick={handleGoBack}
+          style={{
+            position: 'absolute',
+            top: '20px',
+            left: '20px',
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--ev-c-text-2)',
+            cursor: 'pointer',
+            fontWeight: 600,
+            zIndex: 10
+          }}
+        >
+          <FontAwesomeIcon icon={faArrowLeft} style={{ marginRight: '8px' }} /> Change Identity
+        </button>
+
+        {showRemoteConfig && (
+          <div style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            zIndex: 100
+          }}>
+            <div style={{
+              background: 'var(--color-background)',
+              padding: '30px',
+              borderRadius: '8px',
+              width: '400px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)'
+            }}>
+              <h3 style={{ color: 'var(--ev-c-text-1)', marginBottom: '15px' }}>Remote OCR Configuration</h3>
+              <label style={{ display: 'block', marginBottom: '8px', color: 'var(--ev-c-text-2)', fontSize: '14px' }}>
+                API URL (Server)
+              </label>
+              <input
+                type="text"
+                value={remoteUrl}
+                onChange={(e) => setRemoteUrl(e.target.value)}
+                placeholder="http://localhost:8000/file_parse"
+                className="input-field"
+                style={{ marginBottom: '10px' }}
+              />
+              <div style={{ fontSize: '12px', color: '#666', marginBottom: '20px' }}>
+                Default: http://localhost:8000/file_parse<br />
+                Timeout: 1 Hour (for large files)
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                <button
+                  onClick={() => setShowRemoteConfig(false)}
+                  className="btn btn-outline"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRemoteConfigSubmit}
+                  className="btn btn-primary"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '20px' }}>
+          <div style={{ flex: showPdfPreview ? 1 : '1 1 100%' }}>
+            <StartScreen onOptionSelect={handleStartOption} />
+          </div>
+          {showPdfPreview && pdfPreviewUrl && (
+            <div style={{ width: '50%', borderLeft: '1px solid var(--ev-c-black-mute)', paddingLeft: '12px' }}>
+              <iframe src={pdfPreviewUrl} style={{ width: '100%', height: '100vh', border: 'none' }} />
+            </div>
+          )}
+        </div>
         <input
           type="file"
           accept=".md,.markdown,.txt"
@@ -207,6 +494,13 @@ function App() {
           ref={pdfFileInputRef}
           style={{ display: 'none' }}
           onChange={handlePdfFileChange}
+        />
+        <input
+          type="file"
+          accept=".pdf"
+          ref={pdfRemoteFileInputRef}
+          style={{ display: 'none' }}
+          onChange={handlePdfRemoteFileChange}
         />
       </div>
     )
@@ -252,11 +546,12 @@ function App() {
       height: '100vh',
       width: '100%',
       overflow: 'auto',
-      background: 'var(--color-background)'
+      background: 'var(--color-background)',
+      position: 'relative'
     }}>
       <div className="main-container">
 
-        <div className="page-header">
+        <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <button
             onClick={handleGoBack}
             style={{
@@ -270,10 +565,35 @@ function App() {
               gap: '8px',
               fontWeight: 600
             }}
+            >
+            <FontAwesomeIcon icon={faArrowLeft} style={{ marginRight: '8px' }} /> Back to Start
+          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={handleTogglePdfPreview} style={{ background: showPdfPreview ? 'var(--ev-c-accent)' : 'transparent', color: showPdfPreview ? 'white' : 'var(--ev-c-text-2)', border: '1px solid var(--ev-c-text-2)', borderRadius: '4px', padding: '6px 10px', cursor: 'pointer' }}>
+              {showPdfPreview ? 'Hide PDF Preview' : 'Show PDF Preview'}
+            </button>
+          </div>
+          <button
+            onClick={handleClearContent}
+            style={{
+              background: 'transparent',
+              border: '1px solid var(--ev-c-text-2)',
+              borderRadius: '4px',
+              color: 'var(--ev-c-text-2)',
+              cursor: 'pointer',
+              fontSize: '12px',
+              padding: '4px 8px'
+            }}
           >
-            <i className="fas fa-arrow-left"></i> Back to Start
+            <FontAwesomeIcon icon={faTrashAlt} style={{ marginRight: '8px' }} /> Clear Content
           </button>
         </div>
+
+        {showPdfPreview && pdfPreviewUrl && (
+          <div style={{ position: 'absolute', top: '56px', right: 0, bottom: 0, width: '42%', borderLeft: '1px solid var(--ev-c-black-mute)', background: 'white', zIndex: 8 }}>
+            <iframe src={pdfPreviewUrl} style={{ width: '100%', height: '100%', border: 'none' }} />
+          </div>
+        )}
 
         <div style={{
           textAlign: 'center',
@@ -332,8 +652,24 @@ function App() {
           </h3>
 
           <div style={{
+            background: 'var(--ev-c-black-mute)',
+            padding: '15px',
+            borderRadius: '8px',
+            marginBottom: '20px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 600 }}>Active Identity</span>
+              <button onClick={() => setStage('IDENTITY')} style={{ fontSize: '12px', background: 'transparent', border: 'none', color: 'var(--ev-c-accent)', cursor: 'pointer', textDecoration: 'underline' }}>Change</button>
+            </div>
+            <div style={{ fontSize: '13px', marginTop: '5px', color: 'var(--ev-c-text-2)' }}>
+              Algorithm: {config.algorithm} <br />
+              Key Source: {config.keyFilePath ? 'Imported File' : 'Generated Session Key'}
+            </div>
+          </div>
+
+          <div style={{
             display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
+            gridTemplateColumns: '1fr',
             gap: '20px',
             marginBottom: '20px'
           }}>
@@ -348,67 +684,6 @@ function App() {
                 className="input-field"
               />
             </div>
-
-            <div>
-              <label className="label-text">
-                Signing Algorithm
-              </label>
-              <select
-                value={config.algorithm}
-                onChange={(e) => setConfig({ ...config, algorithm: e.target.value as any })}
-                className="select-field"
-                style={{ cursor: 'pointer' }}
-              >
-                <option value="RSA-SHA256">RSA-SHA256</option>
-                <option value="ECDSA-P256">ECDSA-P256</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <label className="label-text">
-              Private Key
-            </label>
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-              <button
-                onClick={handleImportKey}
-                className="btn btn-outline"
-              >
-                <i className="fas fa-folder-open"></i> Import from File
-              </button>
-              {config.keyFilePath && (
-                <span style={{
-                  padding: '10px',
-                  color: 'var(--ev-c-success)',
-                  fontSize: '14px',
-                  display: 'flex',
-                  alignItems: 'center'
-                }}>
-                  ✓ {config.keyFilePath.split('/').pop()}
-                </span>
-              )}
-            </div>
-            <textarea
-              value={config.privateKey}
-              onChange={(e) => setConfig({ ...config, privateKey: e.target.value })}
-              placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----&#10;&#10;Or click 'Import from File' above"
-              className="textarea-field"
-              style={{
-                minHeight: '120px',
-                fontFamily: 'Monaco, Consolas, monospace',
-                fontSize: '12px',
-                resize: 'vertical',
-                lineHeight: '1.5'
-              }}
-            />
-            <small style={{
-              color: '#999',
-              fontSize: '12px',
-              display: 'block',
-              marginTop: '8px'
-            }}>
-              If not provided, an ephemeral key will be generated (not recommended for production)
-            </small>
           </div>
 
           <div style={{ marginBottom: '20px' }}>
@@ -419,7 +694,7 @@ function App() {
               onClick={handleChooseSaveLocation}
               className="btn btn-outline"
             >
-              <i className="fas fa-folder"></i> Choose Save Location
+              <FontAwesomeIcon icon={faFolder} style={{ marginRight: '8px' }} /> Choose Save Location
             </button>
             {config.saveLocation && (
               <p style={{

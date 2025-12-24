@@ -4,7 +4,9 @@ import { electronAPI } from '@electron-toolkit/preload'
 // Custom APIs for renderer
 const api = {
   generateProofFromMarkdown: (data: any) => ipcRenderer.invoke('generate-proof-from-markdown', data),
+  generatePreviewPdf: (data: any) => ipcRenderer.invoke('generate-preview-pdf', data),
   selectKeyFile: () => ipcRenderer.invoke('select-key-file'),
+  generateKeyPair: (algorithm: string) => ipcRenderer.invoke('generate-key-pair', algorithm),
   chooseSaveLocation: (signerId: string) => ipcRenderer.invoke('choose-save-location', signerId)
 }
 

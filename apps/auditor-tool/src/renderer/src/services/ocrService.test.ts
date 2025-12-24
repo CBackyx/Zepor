@@ -137,13 +137,47 @@ describe('ocrService - extractTextFromPdf', () => {
         );
     });
 
-    it('should reconstruct tables based on spatial gaps', async () => {
-        const mockFile = new File([''], 'table.pdf');
+    it('should handle CJK and English spacing correctly', async () => {
+        const mockFile = new File([''], 'cjk_test.pdf');
         mockFile.arrayBuffer = vi.fn().mockResolvedValue(new ArrayBuffer(8));
 
-        const onProgress = vi.fn();
+        // Mock PDF Document Loading
+        (pdfjsLib.getDocument as any).mockReturnValue({
+            promise: Promise.resolve({
+                numPages: 1,
+                getPage: vi.fn().mockResolvedValue({
+                    getViewport: vi.fn().mockReturnValue({ width: 100, height: 100 }),
+                    render: vi.fn().mockReturnValue({ promise: Promise.resolve() })
+                })
+            })
+        });
 
-        // Mock Canvas for JSDOM
+        // Mock Tesseract result with words
+        const mockLines = [
+            {
+                words: [
+                    { text: 'Hello', bbox: {} },
+                    { text: 'World', bbox: {} }, // Eng-Eng -> Space
+                    { text: '你好', bbox: {} },     // Eng-CJK -> No space (or space depending on preference, logic says no space if adjacent to CJK?)
+                    // Logic: prev=World(Eng), curr=你好(CJK). prevIsCJK=false, currIsCJK=true. -> No space.
+                    { text: '世界', bbox: {} }     // CJK-CJK -> No space
+                ]
+            }
+        ];
+
+        // Re-mock createWorker to return logic capable result
+        (createWorker as any).mockResolvedValue({
+            recognize: vi.fn().mockResolvedValue({
+                data: {
+                    text: 'Fallback',
+                    lines: mockLines,
+                    words: mockLines[0].words // Assuming flat words array is also populated if logic uses it, but our logic uses lines now
+                }
+            }),
+            terminate: vi.fn()
+        });
+
+        // Need to ensure pdf loading succeeds too
         const mockContext = { drawImage: vi.fn() };
         const mockCanvas = {
             getContext: vi.fn().mockReturnValue(mockContext),
@@ -153,45 +187,13 @@ describe('ocrService - extractTextFromPdf', () => {
         };
         vi.spyOn(document, 'createElement').mockReturnValue(mockCanvas as any);
 
-        (pdfjsLib.getDocument as any).mockReturnValue({
-            promise: Promise.resolve({
-                numPages: 1,
-                getPage: vi.fn().mockResolvedValue({
-                    getViewport: vi.fn().mockReturnValue({ width: 500, height: 500 }),
-                    render: vi.fn().mockReturnValue({ promise: Promise.resolve() })
-                })
-            })
-        });
-
-        const mockLines = [
-            {
-                words: [
-                    { text: 'Item', bbox: { x0: 10, x1: 50 } },
-                    { text: 'Price', bbox: { x0: 200, x1: 250 } } // Gap = 150 > 40
-                ]
-            },
-            {
-                words: [
-                    { text: 'Apple', bbox: { x0: 10, x1: 60 } },
-                    { text: '$1.00', bbox: { x0: 200, x1: 250 } }
-                ]
-            }
-        ];
-
-        (createWorker as any).mockResolvedValue({
-            recognize: vi.fn().mockResolvedValue({
-                data: {
-                    text: 'Fallback text',
-                    lines: mockLines
-                }
-            }),
-            terminate: vi.fn()
-        });
-
+        // ... existing pdf setup reuse ...
+        const onProgress = vi.fn();
         const result = await extractTextFromPdf(mockFile, onProgress);
 
-        expect(result).toContain('| Item | Price |');
-        expect(result).toContain('| Apple | $1.00 |');
+        // Expected logic: "Hello" + " " + "World" + "" + "你好" + "" + "世界"
+        // "Hello World你好世界"
+        expect(result).toContain('Hello World你好世界');
     });
 
 });

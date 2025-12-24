@@ -104,6 +104,12 @@
   font-size: 18px !important;
 }
 
+/* Hide built-in SimpleMDE preview and side-by-side toolbar buttons — we use our own PDF preview */
+.editor-toolbar .fa-eye,
+.editor-toolbar .fa-columns {
+  display: none !important;
+}
+
 /* Guide/Help */
 .editor-toolbar .fa-question-circle::before {
   content: '?' !important;

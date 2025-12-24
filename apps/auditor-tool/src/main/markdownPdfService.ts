@@ -1,9 +1,9 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, app } from 'electron';
 import { marked } from 'marked';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
+import os from 'os';
 
 interface MarkdownPayload {
   markdown: string;
@@ -19,7 +19,7 @@ interface KeyPair {
 }
 
 // Generate default key pairs for different algorithms
-function generateDefaultKeyPair(algorithm: string): KeyPair {
+export function generateDefaultKeyPair(algorithm: string): KeyPair {
   if (algorithm === 'RSA-SHA256') {
     const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
       modulusLength: 2048,
@@ -36,6 +36,44 @@ function generateDefaultKeyPair(algorithm: string): KeyPair {
     });
     return { publicKey, privateKey };
   }
+}
+
+// Normalize LaTeX text commands to Unicode (shared helper)
+export function replaceLatexTextCommands(input: string): string {
+  let out = input;
+  out = out.replace(/\\textregistered/g, '®');
+  out = out.replace(/\\texttrademark/g, '™');
+  out = out.replace(/\\textdegree/g, '°');
+  out = out.replace(/\\degree/g, '°');
+
+  out = out.replace(/\\textcircled\{(\d{1,2})\}/g, (_, numStr) => {
+    const n = parseInt(numStr, 10);
+    if (n >= 1 && n <= 20) return String.fromCodePoint(0x245F + n);
+    return `(${n})`;
+  });
+
+  out = out.replace(/\\textcircled\{([A-Za-z])\}/g, (_, ch) => {
+    const code = ch.charCodeAt(0);
+    if (code >= 65 && code <= 90) return String.fromCodePoint(0x24B6 + (code - 65));
+    if (code >= 97 && code <= 122) return String.fromCodePoint(0x24D0 + (code - 97));
+    return ch;
+  });
+
+  out = out.replace(/\$+\s*\\textcircled\{(\d{1,2})\}\s*\$+/g, (_, numStr) => {
+    const n = parseInt(numStr, 10);
+    if (n >= 1 && n <= 20) return String.fromCodePoint(0x245F + n);
+    return `(${n})`;
+  });
+  out = out.replace(/\$+\s*\\textcircled\{([A-Za-z])\}\s*\$+/g, (_, ch) => {
+    const code = ch.charCodeAt(0);
+    if (code >= 65 && code <= 90) return String.fromCodePoint(0x24B6 + (code - 65));
+    if (code >= 97 && code <= 122) return String.fromCodePoint(0x24D0 + (code - 97));
+    return ch;
+  });
+  out = out.replace(/\$+\s*\\textregistered\s*\$+/g, '®');
+  out = out.replace(/\$+\s*\\texttrademark\s*\$+/g, '™');
+
+  return out;
 }
 
 export async function generateProofFromMarkdown(
@@ -65,7 +103,9 @@ export async function generateProofFromMarkdown(
   }
 
   // Convert Markdown to HTML using marked
-  const htmlBody = await marked(markdown);
+  let htmlBody = await marked(markdown);
+  // Normalize LaTeX-like text commands to Unicode for consistent PDF output
+  htmlBody = replaceLatexTextCommands(htmlBody);
   const timestamp = new Date().toISOString();
 
   // Create beautiful HTML template
@@ -303,70 +343,147 @@ export async function generateProofFromMarkdown(
     }
   });
 
-  // Load the HTML content
-  await pdfWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(htmlContent)}`);
+  // Write HTML to a temporary file
+  const tempHtmlPath = path.join(os.tmpdir(), `auditor-proof-${Date.now()}.html`);
+  fs.writeFileSync(tempHtmlPath, htmlContent, 'utf-8');
 
-  // Wait for content to be fully loaded
-  await new Promise(resolve => setTimeout(resolve, 500));
+  try {
+    // Load the HTML content from file
+    await pdfWindow.loadFile(tempHtmlPath);
 
-  // Generate PDF from the offscreen window
-  const pdfBuffer = await pdfWindow.webContents.printToPDF({
-    printBackground: true,
-    pageSize: 'A4',
-    preferCSSPageSize: true
-  });
+    // Wait for content to be fully loaded
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-  // Close the offscreen window
-  pdfWindow.close();
+    // Generate PDF from the offscreen window
+    const pdfBuffer = await pdfWindow.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      preferCSSPageSize: true
+    });
 
-  // Determine save path
-  let filePath: string;
+    // Close the offscreen window
+    pdfWindow.close();
 
-  if (saveLocation) {
-    // User specified save location
-    filePath = saveLocation;
-    // Ensure .pdf extension
-    if (!filePath.endsWith('.pdf')) {
-      filePath += '.pdf';
+    // Determine save path
+    let filePath: string;
+
+    if (saveLocation) {
+      // User specified save location
+      filePath = saveLocation;
+      // Ensure .pdf extension
+      if (!filePath.endsWith('.pdf')) {
+        filePath += '.pdf';
+      }
+    } else {
+      // Default location
+      const documentsPath = app.getPath('documents');
+      const saveDir = path.join(documentsPath, 'ZeporProofs');
+      if (!fs.existsSync(saveDir)) {
+        fs.mkdirSync(saveDir, { recursive: true });
+      }
+      const timestampNum = Date.now();
+      const fileName = `proof_${signerId}_${timestampNum}.pdf`;
+      filePath = path.join(saveDir, fileName);
     }
-  } else {
-    // Default location
-    const documentsPath = app.getPath('documents');
-    const saveDir = path.join(documentsPath, 'ZeporProofs');
-    if (!fs.existsSync(saveDir)) {
-      fs.mkdirSync(saveDir, { recursive: true });
+
+    // Save PDF
+    fs.writeFileSync(filePath, pdfBuffer);
+
+    // Calculate hash
+    const fileHash = crypto.createHash('sha256').update(pdfBuffer).digest('hex');
+
+    // Sign the hash
+    const signAlgorithm = algorithm === 'RSA-SHA256' ? 'RSA-SHA256' : 'sha256';
+    const sign = crypto.createSign(signAlgorithm);
+    sign.update(pdfBuffer);
+    const signature = sign.sign(privKey, 'hex');
+
+    // Save metadata and signature
+    const metadataPath = filePath + '.meta.json';
+    const metadata = {
+      signerId,
+      timestamp: new Date().toISOString(),
+      timestampUnix: Date.now(),
+      algorithm,
+      publicKey: pubKey,
+      fileHash,
+      signature,
+      version: '1.1.0',
+      generator: 'Zepor Auditor Tool'
+    };
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+
+    return { filePath, fileHash };
+  } finally {
+    // Clean up temporary file
+    if (fs.existsSync(tempHtmlPath)) {
+      try {
+        fs.unlinkSync(tempHtmlPath);
+      } catch (e) {
+        console.error('Failed to cleanup temp file:', e);
+      }
     }
-    const timestampNum = Date.now();
-    const fileName = `proof_${signerId}_${timestampNum}.pdf`;
-    filePath = path.join(saveDir, fileName);
+    if (!pdfWindow.isDestroyed()) {
+      pdfWindow.destroy();
+    }
   }
+}
 
-  // Save PDF
-  fs.writeFileSync(filePath, pdfBuffer);
+// Generate PDF buffer from markdown for preview (no signing, no metadata save)
+export async function generatePdfPreviewFromMarkdown(markdown: string, mainWindow: BrowserWindow): Promise<Buffer> {
+  // Convert Markdown to HTML and normalize text commands
+  let htmlBody = await marked(markdown);
+  htmlBody = replaceLatexTextCommands(htmlBody);
 
-  // Calculate hash
-  const fileHash = crypto.createHash('sha256').update(pdfBuffer).digest('hex');
+  // Use same HTML template (without metadata/footer signing block)
+  const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    @page { margin: 25mm; size: A4; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Georgia', 'Times New Roman', serif; font-size: 11pt; line-height: 1.6; color: #2c3e50; background: white; padding: 20px; }
+    h1 { color: #667eea; font-size: 28pt; font-weight: 700; margin-bottom: 12pt; padding-bottom: 8pt; border-bottom: 3px solid #667eea; page-break-after: avoid; }
+    h2 { color: #34495e; font-size: 18pt; font-weight: 600; margin-top: 24pt; margin-bottom: 12pt; page-break-after: avoid; }
+    h3 { color: #34495e; font-size: 14pt; font-weight: 600; margin-top: 18pt; margin-bottom: 10pt; page-break-after: avoid; }
+    p { margin-bottom: 10pt; text-align: justify; }
+    pre { background: #f7f7f7; padding: 12pt; border-radius: 4pt; border-left: 3pt solid #667eea; overflow-x: auto; margin-bottom: 12pt; }
+    table { border-collapse: collapse; width: 100%; margin: 12pt 0; font-size: 10pt; }
+    th, td { border: 1pt solid #ddd; padding: 8pt; text-align: left; }
+    th { background-color: #667eea; color: white; font-weight: 600; }
+    .footer { margin-top: 30pt; padding-top: 15pt; border-top: 1pt solid #e0e0e0; text-align: center; font-size: 9pt; color: #999; }
+  </style>
+</head>
+<body>
+  ${htmlBody}
+  <div class="footer"><p style="font-size:9pt;color:#999">Preview PDF - not signed</p></div>
+</body>
+</html>`;
 
-  // Sign the hash
-  const signAlgorithm = algorithm === 'RSA-SHA256' ? 'RSA-SHA256' : 'sha256';
-  const sign = crypto.createSign(signAlgorithm);
-  sign.update(pdfBuffer);
-  const signature = sign.sign(privKey, 'hex');
+  const pdfWindow = new BrowserWindow({ width: 800, height: 600, show: false, webPreferences: { offscreen: true, nodeIntegration: false } });
 
-  // Save metadata and signature
-  const metadataPath = filePath + '.meta.json';
-  const metadata = {
-    signerId,
-    timestamp: new Date().toISOString(),
-    timestampUnix: Date.now(),
-    algorithm,
-    publicKey: pubKey,
-    fileHash,
-    signature,
-    version: '1.1.0',
-    generator: 'Zepor Auditor Tool'
-  };
-  fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+  // Write HTML to a temporary file
+  const tempHtmlPath = path.join(os.tmpdir(), `auditor-preview-${Date.now()}.html`);
+  fs.writeFileSync(tempHtmlPath, htmlContent, 'utf-8');
 
-  return { filePath, fileHash };
+  try {
+    await pdfWindow.loadFile(tempHtmlPath);
+    await new Promise(resolve => setTimeout(resolve, 400));
+    const pdfBuffer = await pdfWindow.webContents.printToPDF({ printBackground: true, pageSize: 'A4', preferCSSPageSize: true });
+    return pdfBuffer;
+  } finally {
+    // Clean up temporary file
+    if (fs.existsSync(tempHtmlPath)) {
+      try {
+        fs.unlinkSync(tempHtmlPath);
+      } catch (e) {
+        console.error('Failed to cleanup temp file:', e);
+      }
+    }
+    if (!pdfWindow.isDestroyed()) {
+      pdfWindow.close();
+    }
+  }
 }

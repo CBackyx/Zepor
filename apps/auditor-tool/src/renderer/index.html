@@ -6,7 +6,10 @@
   <title>Zepor Signer</title>
   <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https: blob: data:;" />
+    content="default-src 'self' 'unsafe-inline' 'unsafe-eval' blob: data: https: http: file:; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https: http: file:; style-src 'self' 'unsafe-inline' https: http: file:; img-src 'self' data: https: http: file:; font-src 'self' data: https: http: file:; connect-src 'self' https: http: blob: data: file:;" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 </head>
 
 <body>

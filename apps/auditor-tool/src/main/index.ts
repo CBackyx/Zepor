@@ -2,7 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { generateProofFromMarkdown } from './markdownPdfService'
+import { generateProofFromMarkdown, generateDefaultKeyPair } from './markdownPdfService'
 import fs from 'fs'
 
 function createWindow(): void {
@@ -17,7 +17,8 @@ function createWindow(): void {
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+      sandbox: false,
+      webSecurity: false
     }
   })
 
@@ -95,6 +96,16 @@ app.whenReady().then(() => {
     return { filePath: result.filePath }
   })
 
+  ipcMain.handle('generate-key-pair', async (_, algorithm: string) => {
+    try {
+      const keyPair = generateDefaultKeyPair(algorithm);
+      return { privateKey: keyPair.privateKey, publicKey: keyPair.publicKey };
+    } catch (error) {
+      console.error('Key Generation Error:', error);
+      throw error;
+    }
+  })
+
   ipcMain.handle('generate-proof-from-markdown', async (_, payload) => {
     try {
       const mainWindow = BrowserWindow.getAllWindows()[0]
@@ -106,6 +117,19 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('generate-preview-pdf', async (_, { markdown }) => {
+    try {
+      const mainWindow = BrowserWindow.getAllWindows()[0]
+      if (!mainWindow) throw new Error('No window available')
+      const { generatePdfPreviewFromMarkdown } = await import('./markdownPdfService')
+      const buf = await generatePdfPreviewFromMarkdown(markdown, mainWindow)
+      return buf.toString('base64')
+    } catch (error) {
+      console.error('Preview PDF Error:', error)
+      throw error
+    }
+  })
+
   createWindow()
 
   app.on('activate', function () {
@@ -113,15 +137,15 @@ app.whenReady().then(() => {
     // dock icon is clicked and there are no other windows open.
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-})
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  // Quit when all windows are closed, except on macOS. There, it's common
+  // for applications and their menu bar to stay active until the user quits
+  // explicitly with Cmd + Q.
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit()
+    }
+  })
 })
 
 // In this file you can include the rest of your app's specific main process

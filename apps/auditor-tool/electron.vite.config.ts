@@ -11,6 +11,9 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
-    plugins: [react()]
+    plugins: [react()],
+    build: {
+      assetsInlineLimit: 204800 // Inlines assets < 200kb (covers our fonts)
+    }
   }
 })
