@@ -329,7 +329,7 @@ export async function generateProofFromMarkdown(
     }
     
     body {
-      font-family: 'Georgia', 'Times New Roman', serif;
+      font-family: "Noto Sans CJK SC", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
       font-size: 11pt;
       line-height: 1.6;
       color: #2c3e50;
@@ -367,7 +367,7 @@ export async function generateProofFromMarkdown(
     
     p {
       margin-bottom: 10pt;
-      text-align: justify;
+      text-align: left;
     }
     
     strong {
@@ -425,6 +425,7 @@ export async function generateProofFromMarkdown(
       border: 1pt solid #ddd;
       padding: 8pt;
       text-align: left;
+      vertical-align: top;
     }
     
     th {
