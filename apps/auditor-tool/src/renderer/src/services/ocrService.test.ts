@@ -89,7 +89,7 @@ describe('ocrService - extractTextFromPdf', () => {
         const result = await extractTextFromPdf(mockFile, onProgress);
 
         // Verify
-        expect(createWorker).toHaveBeenCalledWith('eng+chi_sim+chi_tra');
+        expect(createWorker).toHaveBeenCalledWith('eng+chi_sim');
         expect(result).toContain('Extracted Text Content');
         expect(onProgress).toHaveBeenCalled();
         expect(mockWorker.terminate).toHaveBeenCalled();
@@ -194,6 +194,60 @@ describe('ocrService - extractTextFromPdf', () => {
         // Expected logic: "Hello" + " " + "World" + "" + "你好" + "" + "世界"
         // "Hello World你好世界"
         expect(result).toContain('Hello World你好世界');
+    });
+
+    it('should handle whitespace-only words by skipping or merging correctly', async () => {
+        const mockFile = new File([''], 'spacing_test.pdf');
+        mockFile.arrayBuffer = vi.fn().mockResolvedValue(new ArrayBuffer(8));
+
+        const mockLines = [
+            {
+                words: [
+                    { text: '风险', bbox: {} },
+                    { text: ' ', bbox: {} }, // Tesseract sometimes produces space words? Or maybe just bad interpretation?
+                    { text: '提示', bbox: {} },
+                    { text: ':', bbox: {} }
+                ]
+            }
+        ];
+
+        (createWorker as any).mockResolvedValue({
+            recognize: vi.fn().mockResolvedValue({
+                data: {
+                    text: 'Fallback',
+                    lines: mockLines,
+                }
+            }),
+            terminate: vi.fn()
+        });
+
+        // Setup PDF mocks again (since mocks are reset/re-created in each test but we reuse some structure)
+        (pdfjsLib.getDocument as any).mockReturnValue({
+            promise: Promise.resolve({
+                numPages: 1,
+                getPage: vi.fn().mockResolvedValue({
+                    getViewport: vi.fn().mockReturnValue({ width: 100, height: 100 }),
+                    render: vi.fn().mockReturnValue({ promise: Promise.resolve() })
+                })
+            })
+        });
+
+        // Mock canvas again
+        const mockContext = { drawImage: vi.fn() };
+        const mockCanvas = {
+            getContext: vi.fn().mockReturnValue(mockContext),
+            toDataURL: vi.fn().mockReturnValue('data:image/png;base64,dummy'),
+            height: 0,
+            width: 0
+        };
+        vi.spyOn(document, 'createElement').mockReturnValue(mockCanvas as any);
+
+        const onProgress = vi.fn();
+        const result = await extractTextFromPdf(mockFile, onProgress);
+
+        // We EXPECT "风险提示:" (No spaces)
+        // If our current logic blindly joins ' ' it might fail this expectation.
+        expect(result).toContain('风险提示:');
     });
 
 });

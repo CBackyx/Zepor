@@ -64,6 +64,7 @@ function App() {
   const [ocrProgress, setOcrProgress] = useState<{ value: number; message: string } | null>(null)
   const [ocrErrorDetails, setOcrErrorDetails] = useState<string | null>(null)
   const [showErrorDetails, setShowErrorDetails] = useState(false)
+  const [sourceHash, setSourceHash] = useState<string | null>(null)
 
   // Remote OCR Config State
   const [showRemoteConfig, setShowRemoteConfig] = useState(false)
@@ -99,34 +100,6 @@ function App() {
   // Stable options object
   const mdeOptions = useMemo(() => {
     // Reuse a lightweight LaTeX text-command replacer so editor preview matches PDF output
-    const replaceLatexTextCommands = (input: string) => {
-      let out = input;
-      out = out.replace(/\\textregistered/g, '®');
-      out = out.replace(/\\texttrademark/g, '™');
-      out = out.replace(/\\textdegree/g, '°');
-      out = out.replace(/\\degree/g, '°');
-      out = out.replace(/\\textcircled\{(\d{1,2})\}/g, (_, numStr) => {
-        const n = parseInt(numStr, 10);
-        if (n >= 1 && n <= 20) return String.fromCodePoint(0x245F + n);
-        return `(${n})`;
-      });
-      out = out.replace(/\\textcircled\{([A-Za-z])\}/g, (_, ch) => {
-        const code = ch.charCodeAt(0);
-        if (code >= 65 && code <= 90) return String.fromCodePoint(0x24B6 + (code - 65));
-        if (code >= 97 && code <= 122) return String.fromCodePoint(0x24D0 + (code - 97));
-        return ch;
-      });
-      // handle inline-math wrapped forms
-      out = out.replace(/\$+\s*\\textcircled\{(\d{1,2})\}\s*\$+/g, (_, numStr) => {
-        const n = parseInt(numStr, 10);
-        if (n >= 1 && n <= 20) return String.fromCodePoint(0x245F + n);
-        return `(${n})`;
-      });
-      out = out.replace(/\$+\s*\\textregistered\s*\$+/g, '®');
-      out = out.replace(/\$+\s*\\texttrademark\s*\$+/g, '™');
-      return out;
-    };
-
     return {
       spellChecker: false,
       minHeight: '350px',
@@ -134,7 +107,8 @@ function App() {
       autofocus: false,
       previewRender: (plainText) => {
         // Pre-process latex-like text commands so preview matches PDF renderer
-        const processed = replaceLatexTextCommands(plainText);
+        // Manual replacement removed in favor of KaTeX
+        const processed = plainText;
         // Basic Markdown render
         const preview = SimpleMDE.prototype.markdown(processed);
         // We will perform a post-render on the preview URL in a real DOM, 
@@ -142,35 +116,35 @@ function App() {
         // For simple math support without complex parsing, we can check if window.renderMathInElement exists.
 
         setTimeout(() => {
-              try {
+          try {
+            // @ts-ignore
+            if (window.renderMathInElement) {
+              const previewEl = document.getElementsByClassName('editor-preview')[0];
+              if (previewEl) {
                 // @ts-ignore
-                if (window.renderMathInElement) {
-                  const previewEl = document.getElementsByClassName('editor-preview')[0];
-                  if (previewEl) {
-                    // @ts-ignore
-                    window.renderMathInElement(previewEl, {
-                      delimiters: [
-                        { left: '$$', right: '$$', display: true },
-                        { left: '$', right: '$', display: false },
-                        { left: '\\(', right: '\\)', display: false },
-                        { left: '\\[', right: '\\]', display: true }
-                      ]
-                    });
-                  }
-                }
-              } catch (e) {
-                // If math rendering fails, attempt a safe fallback: directly set innerHTML of preview
-                try {
-                  const previewEl = document.getElementsByClassName('editor-preview')[0];
-                  if (previewEl && typeof preview === 'string') {
-                    // @ts-ignore
-                    previewEl.innerHTML = preview;
-                  }
-                } catch (err) {
-                  console.error('Fallback preview render failed', err);
-                }
-                console.error('Math render error', e);
+                window.renderMathInElement(previewEl, {
+                  delimiters: [
+                    { left: '$$', right: '$$', display: true },
+                    { left: '$', right: '$', display: false },
+                    { left: '\\(', right: '\\)', display: false },
+                    { left: '\\[', right: '\\]', display: true }
+                  ]
+                });
               }
+            }
+          } catch (e) {
+            // If math rendering fails, attempt a safe fallback: directly set innerHTML of preview
+            try {
+              const previewEl = document.getElementsByClassName('editor-preview')[0];
+              if (previewEl && typeof preview === 'string') {
+                // @ts-ignore
+                previewEl.innerHTML = preview;
+              }
+            } catch (err) {
+              console.error('Fallback preview render failed', err);
+            }
+            console.error('Math render error', e);
+          }
         }, 0);
 
         return preview;
@@ -228,6 +202,7 @@ function App() {
   const handleStartOption = (option: 'create' | 'import-md' | 'import-pdf-local' | 'import-pdf-remote') => {
     if (option === 'create') {
       setStage('EDITOR')
+      setSourceHash(null)
     } else if (option === 'import-md') {
       mdFileInputRef.current?.click()
     } else if (option === 'import-pdf-local') {
@@ -252,6 +227,7 @@ function App() {
       const content = event.target?.result as string
       setMarkdown(content)
       setStage('EDITOR')
+      setSourceHash(null)
     }
     reader.readAsText(file)
     e.target.value = ''
@@ -261,18 +237,31 @@ function App() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // TODO: Remote OCR Check integrated here later.
-    // Defaulting to Local OCR for this step of the plan.
-
     setStage('OCR')
     setIsProcessing(true)
     setOcrProgress({ value: 0, message: 'Initializing OCR...' })
 
     try {
+      // Calculate Hash
+      const arrayBuffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      setSourceHash(hashHex);
+
       const text = await extractTextFromPdf(file, (progress, message) => {
         setOcrProgress({ value: progress, message })
       })
-      setMarkdown(text || DEFAULT_TEMPLATE)
+
+      const header = `# Zepor Proof of Reserve Audit Report
+
+## Auditor Information
+- **Auditor ID**: ${config.signerId}
+- **Date**: ${new Date().toISOString().split('T')[0]}
+- **Document Hash**: ${hashHex}
+
+`;
+      setMarkdown(header + (text || ''))
       setStage('EDITOR')
     } catch (error) {
       console.error(error)
@@ -298,6 +287,13 @@ function App() {
     setOcrProgress({ value: 0, message: 'Uploading to Remote OCR...' })
 
     try {
+      // Calculate Hash
+      const arrayBuffer = await file.arrayBuffer();
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      setSourceHash(hashHex);
+
       const { uploadPdfToRemote } = await import('./services/remoteOcrService');
       // Pass the configured URL if set, otherwise undefined (to use default)
       const urlToUse = remoteUrl.trim() || undefined;
@@ -307,7 +303,15 @@ function App() {
         setOcrProgress({ value: 0.5, message });
       });
 
-      setMarkdown(text || DEFAULT_TEMPLATE)
+      const header = `# Zepor Proof of Reserve Audit Report
+
+## Auditor Information
+- **Auditor ID**: ${config.signerId}
+- **Date**: ${new Date().toISOString().split('T')[0]}
+- **Document Hash**: ${hashHex}
+
+`;
+      setMarkdown(header + (text || ''))
       setStage('EDITOR')
     } catch (error) {
       console.error(error)
@@ -335,6 +339,7 @@ function App() {
   const handleClearContent = () => {
     if (confirm('Are you sure you want to clear the editor content?')) {
       setMarkdown(DEFAULT_TEMPLATE);
+      setSourceHash(null);
     }
   }
 
@@ -364,7 +369,8 @@ function App() {
         signerId: config.signerId,
         algorithm: config.algorithm,
         privateKey: config.privateKey || 'DEFAULT_KEY',
-        saveLocation: config.saveLocation
+        saveLocation: config.saveLocation,
+        sourceDocumentHash: sourceHash || undefined
       }
 
       // @ts-ignore
@@ -565,7 +571,7 @@ function App() {
               gap: '8px',
               fontWeight: 600
             }}
-            >
+          >
             <FontAwesomeIcon icon={faArrowLeft} style={{ marginRight: '8px' }} /> Back to Start
           </button>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>

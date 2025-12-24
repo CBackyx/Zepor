@@ -28,8 +28,8 @@ export async function extractTextFromPdf(
 
         let worker;
         try {
-            // Support English, Simplified Chinese, and Traditional Chinese
-            worker = await createWorker('eng+chi_sim+chi_tra');
+            // Support English and Simplified Chinese only to prevent confusion and improve speed
+            worker = await createWorker('eng+chi_sim');
         } catch (e) {
             console.error('Tesseract Init Error:', e);
             throw new Error(`Failed to initialize Tesseract: ${String(e)}`);
@@ -40,7 +40,6 @@ export async function extractTextFromPdf(
 
             const page = await pdf.getPage(i);
             // Lower scale slightly for speed if needed, but 2.0 is good for accuracy.
-            // Let's keep 2.0 as requested for quality "support".
             const viewport = page.getViewport({ scale: 2.0 });
 
             const canvas = document.createElement('canvas');
@@ -59,75 +58,57 @@ export async function extractTextFromPdf(
             const ret = await worker.recognize(dataUrl);
 
             // Access words to handle spacing manually
-            const words = (ret.data as any).words;
             let pageText = '';
 
-            if (words && words.length > 0) {
-                // Heuristic for spacing:
-                // If Prev is CJK or Next is CJK -> No Space
-                // If Prev is English/Num AND Next is English/Num -> Space
+            // Use 'lines' for better structure structure preservation
+            const lines = (ret.data as any).lines;
+            if (lines && lines.length > 0) {
+                pageText = lines.map(line => {
+                    // Filter out empty or whitespace-only words (separators)
+                    // Also TRIM words to ensure no internal/boundary spaces confuse us
+                    const lineWords = line.words ? line.words
+                        .map(w => ({ ...w, text: w.text ? w.text.trim() : '' }))
+                        .filter(w => w.text.length > 0)
+                        : [];
 
-                for (let j = 0; j < words.length; j++) {
-                    const word = words[j];
-                    const text = word.text;
+                    if (lineWords.length === 0) return '';
 
-                    if (j === 0) {
-                        pageText += text;
-                        continue;
-                    }
+                    let lineStr = lineWords[0].text;
 
-                    const prevWord = words[j - 1];
-                    const prevText = prevWord.text;
+                    for (let k = 1; k < lineWords.length; k++) {
+                        const prev = lineWords[k - 1];
+                        const curr = lineWords[k];
 
-                    // Simple CJK check (Ranges for common CJK)
-                    // This is a naive check but covers most common cases
-                    const isCJK = (str: string) => /[\u4e00-\u9fa5]/.test(str);
+                        // Extended CJK range including punctuation and full-width forms
+                        const isCJK = (str: string) => /[\u2000-\u206F\u3000-\u30FF\u4E00-\u9FBF\uFF00-\uFFEF]/.test(str);
 
-                    const prevIsCJK = isCJK(prevText);
-                    const currIsCJK = isCJK(text);
+                        const prevChar = prev.text.slice(-1); // Last char of prev
+                        const currChar = curr.text.charAt(0); // First char of curr
 
-                    // Check for new line based on bbox or Tesseract's line info? 
-                    // Tesseract "words" array flattens everything usually, or we can use "lines".
-                    // Using "lines" is safer for layout preservation.
-                }
+                        const prevIsCJK = isCJK(prevChar);
+                        const currIsCJK = isCJK(currChar);
 
-                // Let's switch to using 'lines' for structure, then process words within line
-                const lines = (ret.data as any).lines;
-                if (lines && lines.length > 0) {
-                    pageText = lines.map(line => {
-                        const lineWords = line.words;
-                        if (!lineWords || lineWords.length === 0) return '';
-
-                        let lineStr = lineWords[0].text;
-
-                        for (let k = 1; k < lineWords.length; k++) {
-                            const prev = lineWords[k - 1];
-                            const curr = lineWords[k];
-
-                            const isCJK = (str: string) => /[\u4e00-\u9fa5]/.test(str);
-                            // Simple regex for CJK
-                            const prevChar = prev.text.slice(-1); // Last char of prev
-                            const currChar = curr.text.charAt(0); // First char of curr
-
-                            const prevIsCJK = isCJK(prevChar);
-                            const currIsCJK = isCJK(currChar);
-
-                            if (prevIsCJK || currIsCJK) {
-                                // No space between CJK characters
-                                lineStr += curr.text;
-                            } else {
-                                // Space between non-CJK (English/Numbers)
-                                lineStr += ' ' + curr.text;
-                            }
+                        if (prevIsCJK || currIsCJK) {
+                            // No space between CJK characters
+                            lineStr += curr.text;
+                        } else {
+                            // Space between non-CJK (English/Numbers)
+                            lineStr += ' ' + curr.text;
                         }
-                        return lineStr;
-                    }).join('\n');
-                } else {
-                    pageText = ret.data.text;
-                }
+                    }
+                    return lineStr;
+                }).join('\n');
+
+                // FINAL CLEANUP: Remove ANY spaces between CJK characters.
+                // This covers cases where Tesseract itself returned a "word" that contained spaces (e.g. "易 方 达")
+                // or where our logic above missed a nuanced boundary.
+                // Regex matches: [CJK] [spaces] (?=[CJK]) -> [CJK]
+                // We use lookahead (?=...) so that the second CJK char isn't consumed, allowing it to be the start of the next match.
+                pageText = pageText.replace(/([\u2000-\u206F\u3000-\u30FF\u4E00-\u9FBF\uFF00-\uFFEF])\s+(?=[\u2000-\u206F\u3000-\u30FF\u4E00-\u9FBF\uFF00-\uFFEF])/g, '$1');
 
             } else {
-                pageText = ret.data.text;
+                // Determine if we need to clean raw text too
+                pageText = ret.data.text.replace(/([\u2000-\u206F\u3000-\u30FF\u4E00-\u9FBF\uFF00-\uFFEF])\s+(?=[\u2000-\u206F\u3000-\u30FF\u4E00-\u9FBF\uFF00-\uFFEF])/g, '$1');
             }
 
             fullText += `\n\n## Page ${i}\n\n${pageText}`;

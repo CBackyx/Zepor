@@ -7,7 +7,8 @@ const api = {
   generatePreviewPdf: (data: any) => ipcRenderer.invoke('generate-preview-pdf', data),
   selectKeyFile: () => ipcRenderer.invoke('select-key-file'),
   generateKeyPair: (algorithm: string) => ipcRenderer.invoke('generate-key-pair', algorithm),
-  chooseSaveLocation: (signerId: string) => ipcRenderer.invoke('choose-save-location', signerId)
+  chooseSaveLocation: (signerId: string) => ipcRenderer.invoke('choose-save-location', signerId),
+  saveKeyFile: (data: any) => ipcRenderer.invoke('save-key-file', data)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

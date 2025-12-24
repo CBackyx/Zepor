@@ -35,20 +35,35 @@ const IdentityScreen: React.FC<IdentityScreenProps> = ({ onComplete, initialConf
     }, [initialConfig]);
 
     const handleGenerateKey = async () => {
-        setIsGenerated(true);
-        setKeyFilePath('');
         setStatus('Generating new key pair...');
         setStatusType('success');
 
-        // Mock key generation for now (In a real app, use Web Crypto API or a library)
-        // This is just a placeholder to demonstrate the flow as requested.
-        // User provided logic implies we should "generate and store".
-        // Real generation would happen here.
         try {
             // @ts-ignore
             const result = await window.api.generateKeyPair(algorithm);
             setPrivateKey(result.privateKey);
-            setStatus(`New ${algorithm} key generated.`);
+            setIsGenerated(true);
+            setKeyFilePath(''); // Reset path until saved
+
+            // Prompt to save immediately
+            try {
+                // @ts-ignore
+                const saveResult = await window.api.saveKeyFile({
+                    content: result.privateKey,
+                    defaultName: `auditor-key-${algorithm.toLowerCase()}.pem`
+                });
+
+                if (saveResult.filePath) {
+                    setKeyFilePath(saveResult.filePath);
+                    setIsGenerated(false); // It's no longer just "generated in memory", it's saved.
+                    setStatus(`New ${algorithm} key generated and saved.`);
+                } else {
+                    setStatus(`New ${algorithm} key generated (not saved).`);
+                }
+            } catch (saveError) {
+                console.error('Failed to save key:', saveError);
+                setStatus(`New ${algorithm} key generated but save failed.`);
+            }
             setStatusType('success');
         } catch (error) {
             console.error(error);
@@ -194,9 +209,12 @@ const IdentityScreen: React.FC<IdentityScreenProps> = ({ onComplete, initialConf
                             </div>
                             <div style={{ fontSize: '13px', color: 'var(--ev-c-text-2)' }}>
                                 {isGenerated ? (
-                                    <span>Generated Session Key ({algorithm})</span>
+                                    <span>Generated Session Key (Not Saved)</span>
                                 ) : (
-                                    <span style={{ wordBreak: 'break-all' }}>Imported: {keyFilePath}</span>
+                                    <div style={{ wordBreak: 'break-all' }}>
+                                        <strong>Location:</strong> {keyFilePath}<br />
+                                        <strong>Name:</strong> {keyFilePath.split(/[/\\]/).pop()}
+                                    </div>
                                 )}
                             </div>
                             <div style={{ marginTop: '5px', fontSize: '10px', color: '#666', fontFamily: 'monospace' }}>

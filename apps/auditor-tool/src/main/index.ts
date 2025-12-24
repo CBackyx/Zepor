@@ -106,6 +106,21 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('save-key-file', async (_, { content, defaultName }) => {
+    const result = await dialog.showSaveDialog({
+      title: 'Save Private Key',
+      defaultPath: defaultName || 'private-key.pem',
+      filters: [{ name: 'PEM Key', extensions: ['pem', 'key'] }]
+    })
+
+    if (result.canceled || !result.filePath) {
+      return { filePath: null }
+    }
+
+    fs.writeFileSync(result.filePath, content, 'utf-8')
+    return { filePath: result.filePath }
+  })
+
   ipcMain.handle('generate-proof-from-markdown', async (_, payload) => {
     try {
       const mainWindow = BrowserWindow.getAllWindows()[0]
